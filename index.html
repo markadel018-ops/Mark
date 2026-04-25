@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mark Ultimate Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<style>
+  :root { --bg: #0a0f1e; --card: #1a2235; --border: #2a3a55; --green: #22c55e; --red: #ef4444; --gold: #f59e0b; --text: #e2e8f0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Cairo', sans-serif; background: var(--bg); color: var(--text); padding: 15px; }
+  header { text-align: center; padding-bottom: 15px; }
+  header h1 { color: var(--green); font-weight: 900; }
+  
+  .top-controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+  .btn-action { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 700; font-family: 'Cairo'; }
+  .btn-report { background: var(--green); color: white; }
+  .btn-reset { background: #3b82f6; color: white; }
+
+  /* منطقة التقرير */
+  #report-area { background: #162033; border: 2px solid var(--gold); border-radius: 12px; padding: 15px; margin-bottom: 20px; display: none; }
+
+  /* مربع أهداف الأسبوع (فوق) */
+  .weekly-section { background: #111a2d; border: 2px solid var(--gold); border-radius: 15px; padding: 15px; margin-bottom: 30px; }
+  .weekly-header { color: var(--gold); font-weight: 900; text-align: center; margin-bottom: 15px; }
+  #list-weekly { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  .weekly-item { background: var(--card); border: 1px solid var(--gold); padding: 8px 12px; border-radius: 8px; display: flex; align-items: center; gap: 10px; min-width: 140px; }
+
+  /* شبكة الأيام */
+  .days-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; max-width: 1100px; margin: 0 auto; }
+  @media (max-width: 768px) { .days-grid { grid-template-columns: 1fr; } }
+  .day { background: var(--card); border: 1px solid var(--border); border-radius: 15px; position: relative; padding-bottom: 60px; min-height: 200px; }
+  .day-header { background: #1e2d45; padding: 10px; color: var(--green); font-weight: 900; text-align: center; border-radius: 15px 15px 0 0; }
+  
+  .task { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid rgba(42,58,85,0.4); gap: 8px; background: var(--card); }
+  .task-text { flex: 1; font-weight: 600; color: #fff; font-size: 0.9rem; }
+  
+  .task[data-status="true"] { background: rgba(34,197,94,0.2) !important; }
+  .task[data-status="false"] { background: rgba(239,68,68,0.2) !important; }
+  .task[data-status="true"] .task-text { color: #86efac; }
+  .task[data-status="false"] .task-text { color: #fca5a5; text-decoration: line-through; }
+
+  .drag-handle { cursor: grab; color: #4a5568; font-size: 1.2rem; }
+  .action-btn { background: none; border: none; cursor: pointer; font-size: 1rem; }
+  .add-plus { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: var(--green); color: white; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 1.3rem; }
+</style>
+</head>
+<body>
+
+<header><h1>Mark Weekly Tracker</h1></header>
+
+<div class="top-controls">
+  <button class="btn-action btn-report" onclick="generateReport()">📋 التقرير النهائي</button>
+  <button class="btn-action btn-reset" onclick="resetWeek()">🔄 تصفير الأسبوع</button>
+</div>
+
+<div id="report-area">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h3 style="color:var(--gold)">📊 إحصائيات الأسبوع</h3>
+        <button onclick="document.getElementById('report-area').style.display='none'" style="background:none; border:none; color:white; font-size:1.5rem; cursor:pointer;">✕</button>
+    </div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div><h4 style="color:#86efac">✔️ المهام اللي خلصت:</h4><ul id="done-items" style="padding-right:20px; font-size:0.9rem; color:#fff;"></ul></div>
+        <div><h4 style="color:#fca5a5">❌ المهام اللي لسه:</h4><ul id="pending-items" style="padding-right:20px; font-size:0.9rem; color:#fff;"></ul></div>
+    </div>
+</div>
+
+<div class="weekly-section">
+    <div class="weekly-header">💡 أهداف الأسبوع الأساسية</div>
+    <div id="list-weekly"></div>
+    <button style="display:block; margin:10px auto; background:var(--gold); border:none; padding:5px 15px; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="addItem('weekly')">+ أضف هدف جديد</button>
+</div>
+
+<div class="days-grid" id="days-wrapper"></div>
+
+<script>
+const daysArr = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"];
+const baseTasks = {
+  "الاثنين":["حفظ 5 جمل","حل 10 ورقات","فيديوهات 30 دقيقة","📖 قراءة إنجيل","✍️ كتابة آية"],
+  "الثلاثاء":["مراجعة Speak lessons","حفظ 15 كلمة + مراجعة 15","حل كتب المدرسة","📖 قراءة إنجيل","✍️ كتابة آية"],
+  "الأربعاء":["مذاكرة للامتحان","مراجعة 5 جمل","فيديو 5 دقائق (ترديد)","📖 قراءة إنجيل","✍️ كتابة آية"],
+  "الخميس":["حفظ 5 جمل","حفظ 15 كلمة + مراجعة 15","فيديوهات 30 دقيقة","📖 قراءة إنجيل","✍️ كتابة آية"],
+  "الجمعة":["حل 10 ورقات","مراجعة نطق","مراجعة أخطاء كتب المدرسة","📖 قراءة إنجيل","✍️ كتابة آية"],
+  "السبت":["مذاكرة موضوع معين","فيديوهات 40 دقيقة","كتابة 2 دقيقة","راحة (اختياري)","📖 قراءة إنجيل","✍️ كتابة آية"],
+  "الأحد":["مراجعة كلمات وجمل","تجهيز مذاكرة + تجميع كلمات","📖 قراءة إنجيل","✍️ كتابة آية"]
+};
+
+const genId = () => '_' + Math.random().toString(36).substr(2, 9) + Date.now();
+let state = JSON.parse(localStorage.getItem('mark_pro_v5')) || { weekly: [] };
+
+if(!state["الاثنين"]) {
+    daysArr.forEach(d => { state[d] = baseTasks[d].map(t => ({id: genId(), text: t})); });
+}
+
+const save = () => localStorage.setItem('mark_pro_v5', JSON.stringify(state));
+
+function render() {
+    // رندر أهداف الأسبوع
+    const wBox = document.getElementById("list-weekly"); wBox.innerHTML = "";
+    state.weekly.forEach(item => {
+        const div = document.createElement("div"); div.className = "weekly-item"; div.setAttribute("data-id", item.id);
+        div.innerHTML = `<span class="drag-handle">⠿</span><span class="task-text">${item.text}</span><button class="action-btn" onclick="editItem('${item.id}','weekly')">✏️</button><button class="action-btn" onclick="delItem('${item.id}','weekly')">🗑️</button>`;
+        wBox.appendChild(div);
+    });
+
+    // رندر الأيام
+    const wrapper = document.getElementById("days-wrapper"); wrapper.innerHTML = "";
+    daysArr.forEach(day => {
+        const dDiv = document.createElement("div"); dDiv.className = "day";
+        dDiv.innerHTML = `<div class="day-header">${day}</div><div class="task-list" id="list-${day}"></div><button class="add-plus" onclick="addItem('${day}')">+</button>`;
+        const list = dDiv.querySelector(".task-list");
+        state[day].forEach(t => {
+            const status = localStorage.getItem('status-' + t.id);
+            const tDiv = document.createElement("div"); tDiv.className = "task"; tDiv.setAttribute("data-id", t.id);
+            if(status && status !== 'null') tDiv.setAttribute("data-status", status);
+            tDiv.innerHTML = `<span class="drag-handle">⠿</span><div style="display:flex; gap:2px"><button class="action-btn" onclick="setStatus('${t.id}','true')">✔️</button><button class="action-btn" onclick="setStatus('${t.id}','false')">❌</button><button class="action-btn" style="color:white" onclick="setStatus('${t.id}','null')">🔘</button></div><span class="task-text">${t.text}</span><button class="action-btn" style="color:#60a5fa" onclick="editItem('${t.id}','${day}')">✏️</button><button class="action-btn" style="color:#f87171" onclick="delItem('${t.id}','${day}')">🗑️</button>`;
+            list.appendChild(tDiv);
+        });
+        wrapper.appendChild(dDiv);
+        initSort("list-" + day);
+    });
+    initSort("list-weekly");
+}
+
+function initSort(id) {
+    new Sortable(document.getElementById(id), {
+        group: 'shared', handle: '.drag-handle', animation: 150,
+        onEnd: () => {
+            const keys = ["weekly", ...daysArr];
+            keys.forEach(k => {
+                const el = document.getElementById(k === "weekly" ? "list-weekly" : "list-" + k);
+                if(el) state[k] = Array.from(el.querySelectorAll('.task, .weekly-item')).map(item => ({ id: item.getAttribute('data-id'), text: item.querySelector('.task-text').innerText }));
+            });
+            save();
+        }
+    });
+}
+
+function setStatus(id, v) { if(v==='null') localStorage.removeItem('status-'+id); else localStorage.setItem('status-'+id, v); render(); }
+function addItem(k) { const t = prompt("أضف:"); if(t) { state[k].push({id: genId(), text: t}); save(); render(); } }
+function editItem(id, k) { const i = state[k].find(x => x.id === id); const nt = prompt("تعديل:", i.text); if(nt) { i.text = nt; save(); render(); } }
+function delItem(id, k) { if(confirm("مسح؟")) { state[k] = state[k].filter(x => x.id !== id); localStorage.removeItem('status-'+id); save(); render(); } }
+
+function generateReport() {
+    const doneUl = document.getElementById("done-items");
+    const pendingUl = document.getElementById("pending-items");
+    doneUl.innerHTML = ""; pendingUl.innerHTML = "";
+    document.querySelectorAll(".task").forEach(t => {
+        const txt = t.querySelector(".task-text").innerText;
+        const status = t.getAttribute("data-status");
+        const li = document.createElement("li"); li.innerText = txt;
+        if(status === "true") doneUl.appendChild(li);
+        else pendingUl.appendChild(li);
+    });
+    document.getElementById("report-area").style.display = "block";
+    window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function resetWeek() { 
+    if(confirm("تصفير الألوان؟")) { 
+        Object.keys(localStorage).forEach(k => { if(k.startsWith("status-")) localStorage.removeItem(k); }); 
+        render(); 
+    } 
+}
+
+window.onload = render;
+</script>
+</body>
+</html>
